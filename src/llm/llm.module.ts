@@ -1,12 +1,14 @@
 import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { LlmService } from './services/llm.service';
+import { LlmValidatorService } from './services/llm-validator.service';
 import { OpenAiLlmClient } from './clients/openai-llm.client';
 import { LLM_CLIENT, LlmClient } from './clients/llm-client.interface';
 
 @Module({
   providers: [
     LlmService,
+    LlmValidatorService,
     OpenAiLlmClient,
     {
       provide: LLM_CLIENT,

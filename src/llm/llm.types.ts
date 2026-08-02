@@ -1,6 +1,12 @@
 export interface BuiltPrompt {
   system: string;
   user: string;
+  /**
+   * Si había una Prediction activa resuelta este turno. Determina si
+   * LlmValidatorService debe exigir `verdictText` (LLMErrorHandling.md,
+   * paso 8 del flujo de validación) o ignorarlo por completo.
+   */
+  hadActivePrediction: boolean;
 }
 
 export type CommentType =
@@ -9,10 +15,7 @@ export type CommentType =
 export type ReadConfidence = 'high' | 'medium' | 'low';
 
 // Siempre válido, nunca se lanza como excepción (LLMErrorHandling.md).
-// La validación fina campo-por-campo (Nivel 2, LLMErrorHandling.md) todavía
-// no está implementada aquí: por ahora solo se garantiza chosenCandidate,
-// que es lo mínimo que TurnService necesita para poder jugar. Eso se
-// completa en el paso 5 con LLMValidatorService.
+// La validación campo-por-campo (Nivel 1/2) vive en LlmValidatorService.
 export interface LLMResult {
   chosenCandidate: 0 | 1 | 2;
   comment: string | null;
