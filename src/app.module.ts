@@ -6,6 +6,7 @@ import { typeOrmModuleOptions } from './config/typeorm.config';
 import { PlayersModule } from './players/players.module';
 import { GamesModule } from './games/games.module';
 import { MemoriesModule } from './memories/memories.module';
+import { StockfishModule } from './stockfish/stockfish.module';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { MemoriesModule } from './memories/memories.module';
     PlayersModule,
     GamesModule,
     MemoriesModule,
+    StockfishModule,
   ],
   controllers: [],
   providers: [],

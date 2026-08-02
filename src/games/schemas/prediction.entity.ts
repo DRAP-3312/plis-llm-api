@@ -26,7 +26,7 @@ export class Prediction {
   @Column({ type: 'int', nullable: true })
   engineConfidence!: number | null;
 
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', nullable: true })
   declaredConfidence!: string | null;
 
   @Column({ type: 'text', nullable: true })

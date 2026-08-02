@@ -1,0 +1,13 @@
+{
+  "name": "stockfish-server",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Wrapper HTTP minimo sobre el binario de Stockfish para PlisLLM",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}

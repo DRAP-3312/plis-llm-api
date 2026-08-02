@@ -31,10 +31,10 @@ export class Taunt {
   @Column('text')
   text!: string;
 
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', nullable: true })
   themeTag!: string | null;
 
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', nullable: true })
   model!: string | null;
 
   @Column({ type: 'int', nullable: true })
