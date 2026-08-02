@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { EntityManager, Repository } from 'typeorm';
 import { Move } from '../schemas/move.entity';
 
 @Injectable()
@@ -13,8 +13,8 @@ export class MovesRepository {
     return this.repo.create(data);
   }
 
-  save(move: Move): Promise<Move> {
-    return this.repo.save(move);
+  save(move: Move, manager?: EntityManager): Promise<Move> {
+    return (manager?.getRepository(Move) ?? this.repo).save(move);
   }
 
   findLastByGameId(gameId: string): Promise<Move | null> {

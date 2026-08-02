@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { EntityManager, Repository } from 'typeorm';
 import { Player } from '../schemas/player.entity';
 import { PlayerProfile } from '../schemas/player-profile.entity';
 
@@ -34,7 +34,12 @@ export class PlayersRepository {
     return this.profileRepo.findOneBy({ playerId });
   }
 
-  saveProfile(profile: PlayerProfile): Promise<PlayerProfile> {
-    return this.profileRepo.save(profile);
+  saveProfile(
+    profile: PlayerProfile,
+    manager?: EntityManager,
+  ): Promise<PlayerProfile> {
+    return (manager?.getRepository(PlayerProfile) ?? this.profileRepo).save(
+      profile,
+    );
   }
 }

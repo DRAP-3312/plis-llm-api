@@ -1,20 +1,21 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { EntityManager, Repository } from 'typeorm';
 import { Prediction } from '../schemas/prediction.entity';
 
 @Injectable()
 export class PredictionsRepository {
   constructor(
-    @InjectRepository(Prediction) private readonly repo: Repository<Prediction>,
+    @InjectRepository(Prediction)
+    private readonly repo: Repository<Prediction>,
   ) {}
 
   create(data: Partial<Prediction>): Prediction {
     return this.repo.create(data);
   }
 
-  save(prediction: Prediction): Promise<Prediction> {
-    return this.repo.save(prediction);
+  save(prediction: Prediction, manager?: EntityManager): Promise<Prediction> {
+    return (manager?.getRepository(Prediction) ?? this.repo).save(prediction);
   }
 
   findActiveByGameIdAndTargetPly(

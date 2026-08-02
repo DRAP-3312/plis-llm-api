@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { EntityManager, Repository } from 'typeorm';
 import { Memory } from '../schemas/memory.entity';
 
 @Injectable()
@@ -9,8 +9,9 @@ export class MemoriesRepository {
     @InjectRepository(Memory) private readonly repo: Repository<Memory>,
   ) {}
 
-  create(data: Partial<Memory>): Promise<Memory> {
-    return this.repo.save(this.repo.create(data));
+  create(data: Partial<Memory>, manager?: EntityManager): Promise<Memory> {
+    const repo = manager?.getRepository(Memory) ?? this.repo;
+    return repo.save(repo.create(data));
   }
 
   findRelevantForPlayer(playerId: string, limit: number): Promise<Memory[]> {

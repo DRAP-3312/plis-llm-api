@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { EntityManager, Repository } from 'typeorm';
 import { Taunt } from '../schemas/taunt.entity';
 
 @Injectable()
@@ -13,7 +13,7 @@ export class TauntsRepository {
     return this.repo.create(data);
   }
 
-  save(taunt: Taunt): Promise<Taunt> {
-    return this.repo.save(taunt);
+  save(taunt: Taunt, manager?: EntityManager): Promise<Taunt> {
+    return (manager?.getRepository(Taunt) ?? this.repo).save(taunt);
   }
 }

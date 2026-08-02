@@ -1,11 +1,25 @@
 import { Module } from '@nestjs/common';
+import { StockfishModule } from '../stockfish/stockfish.module';
+import { LlmModule } from '../llm/llm.module';
+import { PersonalitiesModule } from '../personalities/personalities.module';
+import { MemoriesModule } from '../memories/memories.module';
+import { PlayersModule } from '../players/players.module';
+import { GamesModule } from '../games/games.module';
 import { PromptBuilderService } from './services/prompt-builder.service';
+import { TurnService } from './services/turn.service';
 
-// TurnService (paso 6, TurnStateMachine.md) se suma a este módulo más
-// adelante. Sin controller propio: GamesController lo invoca a través de
+// Sin controller propio: GamesController (paso final) lo invoca a través de
 // GamesService (ver ProjectStructure.md).
 @Module({
-  providers: [PromptBuilderService],
-  exports: [PromptBuilderService],
+  imports: [
+    StockfishModule,
+    LlmModule,
+    PersonalitiesModule,
+    MemoriesModule,
+    PlayersModule,
+    GamesModule,
+  ],
+  providers: [PromptBuilderService, TurnService],
+  exports: [PromptBuilderService, TurnService],
 })
 export class TurnModule {}

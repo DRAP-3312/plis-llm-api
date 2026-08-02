@@ -49,3 +49,18 @@ export interface PromptBuilderInput {
   memories: string[];
   readIndex: ReadIndexInput | null;
 }
+
+export interface GameOutcome {
+  status: 'CHECKMATE' | 'DRAW';
+  winner: 'HUMAN' | 'AI' | null;
+}
+
+// TurnStateMachine.md (B3 y B7.5): cuando la partida termina no hay
+// candidatas que elegir ni lectura que emitir, solo un comentario de
+// cierre (commentType: ENDING).
+export interface EndingPromptInput {
+  gameContext: GameContextInput;
+  outcome: GameOutcome;
+  signals: PlayerSignalsInput;
+  memories: string[];
+}

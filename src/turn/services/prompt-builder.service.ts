@@ -1,9 +1,13 @@
 import { Injectable } from '@nestjs/common';
 import {
   CandidateInput,
+  EndingPromptInput,
+  GameContextInput,
+  GameOutcome,
   MoveHistoryEntry,
   PlayerSignalsInput,
   PromptBuilderInput,
+  ReadIndexInput,
 } from './prompt-builder.types';
 
 function formatMoveHistory(entries: MoveHistoryEntry[]): string {
@@ -55,10 +59,8 @@ function classifyEvalDelta(centipawns: number): string {
   return 'stable';
 }
 
-function buildGameContextSection(input: PromptBuilderInput): string {
-  const { gameContext, candidates } = input;
-
-  const lines = [
+function baseGameContextLines(gameContext: GameContextInput): string[] {
+  return [
     'GAME CONTEXT',
     '------------',
     `Player color: ${gameContext.playerColor}`,
@@ -67,15 +69,42 @@ function buildGameContextSection(input: PromptBuilderInput): string {
     `Current phase: ${gameContext.currentPhase}`,
     `Material balance: ${gameContext.materialBalance}`,
     `In check: ${gameContext.inCheck}`,
+  ];
+}
+
+function buildGameContextSection(input: PromptBuilderInput): string {
+  const lines = [
+    ...baseGameContextLines(input.gameContext),
     '',
     'CANDIDATES',
     '----------',
-    ...candidates.map(
+    ...input.candidates.map(
       (candidate: CandidateInput, index: number) =>
         `${index}: ${candidate.san}  | eval: ${formatEval(candidate.score)}  | ${candidate.tags.join(', ')}`,
     ),
   ];
 
+  return lines.join('\n');
+}
+
+function describeOutcome(outcome: GameOutcome): string {
+  if (outcome.status === 'CHECKMATE') {
+    return outcome.winner === 'HUMAN'
+      ? 'Jaque mate: el jugador te dio mate.'
+      : 'Jaque mate: le diste mate al jugador.';
+  }
+  return 'La partida terminó en tablas.';
+}
+
+function buildEndingGameContextSection(input: EndingPromptInput): string {
+  const lines = [
+    ...baseGameContextLines(input.gameContext),
+    '',
+    'GAME OUTCOME',
+    '------------',
+    describeOutcome(input.outcome),
+    'La partida ya terminó: no hay candidatas que elegir ni lectura que emitir. Generá solo un comentario de cierre (commentType: ENDING). El valor de chosenCandidate no importa.',
+  ];
   return lines.join('\n');
 }
 
@@ -114,18 +143,21 @@ function buildSignalsSection(signals: PlayerSignalsInput): string {
   return lines.join('\n');
 }
 
-function buildMemorySection(input: PromptBuilderInput): string | null {
-  if (input.memories.length === 0 && !input.readIndex) return null;
+function buildMemorySection(
+  memories: string[],
+  readIndex: ReadIndexInput | null,
+): string | null {
+  if (memories.length === 0 && !readIndex) return null;
 
   const lines = [
     'PLAYER MEMORY (use at most one per response, naturally)',
     '-------------------------------------------------------',
-    ...input.memories.slice(0, 3).map((memory) => `- ${memory}`),
+    ...memories.slice(0, 3).map((memory) => `- ${memory}`),
   ];
 
-  if (input.readIndex) {
+  if (readIndex) {
     lines.push(
-      `- Read index: ${input.readIndex.hits}/${input.readIndex.attempts} correct predictions so far`,
+      `- Read index: ${readIndex.hits}/${readIndex.attempts} correct predictions so far`,
     );
   }
 
@@ -145,7 +177,21 @@ export class PromptBuilderService {
     const sections = [
       buildGameContextSection(input),
       buildSignalsSection(input.signals),
-      buildMemorySection(input),
+      buildMemorySection(input.memories, input.readIndex),
+    ].filter((section): section is string => section !== null);
+
+    return sections.join('\n\n');
+  }
+
+  /**
+   * TurnStateMachine.md B3/B7.5: cuando la partida termina no hay
+   * candidatas ni lectura, solo un comentario de cierre.
+   */
+  buildEndingPrompt(input: EndingPromptInput): string {
+    const sections = [
+      buildEndingGameContextSection(input),
+      buildSignalsSection(input.signals),
+      buildMemorySection(input.memories, null),
     ].filter((section): section is string => section !== null);
 
     return sections.join('\n\n');

@@ -1,5 +1,5 @@
 import { PromptBuilderService } from './prompt-builder.service';
-import { PromptBuilderInput } from './prompt-builder.types';
+import { EndingPromptInput, PromptBuilderInput } from './prompt-builder.types';
 
 describe('PromptBuilderService', () => {
   const service = new PromptBuilderService();
@@ -90,5 +90,51 @@ describe('PromptBuilderService', () => {
       '- Dropped the queen on move 9 defending a pawn (3 games ago)',
     );
     expect(prompt).toContain('- Read index: 7/10 correct predictions so far');
+  });
+
+  describe('buildEndingPrompt', () => {
+    const endingInput: EndingPromptInput = {
+      gameContext: baseInput.gameContext,
+      outcome: { status: 'CHECKMATE', winner: 'AI' },
+      signals: baseInput.signals,
+      memories: [],
+    };
+
+    it('has no CANDIDATES section', () => {
+      const prompt = service.buildEndingPrompt(endingInput);
+      expect(prompt).not.toContain('CANDIDATES');
+    });
+
+    it('describes the outcome and instructs an ENDING comment', () => {
+      const prompt = service.buildEndingPrompt(endingInput);
+      expect(prompt).toContain('GAME OUTCOME');
+      expect(prompt).toContain('le diste mate al jugador');
+      expect(prompt).toContain('commentType: ENDING');
+    });
+
+    it('describes a human win differently from an AI win', () => {
+      const prompt = service.buildEndingPrompt({
+        ...endingInput,
+        outcome: { status: 'CHECKMATE', winner: 'HUMAN' },
+      });
+      expect(prompt).toContain('el jugador te dio mate');
+    });
+
+    it('describes a draw with no winner', () => {
+      const prompt = service.buildEndingPrompt({
+        ...endingInput,
+        outcome: { status: 'DRAW', winner: null },
+      });
+      expect(prompt).toContain('tablas');
+    });
+
+    it('never includes a read-index line (no readIndex param exists for endings)', () => {
+      const prompt = service.buildEndingPrompt({
+        ...endingInput,
+        memories: ['Alguna memoria concreta'],
+      });
+      expect(prompt).toContain('- Alguna memoria concreta');
+      expect(prompt).not.toContain('Read index');
+    });
   });
 });
