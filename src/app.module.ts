@@ -7,6 +7,8 @@ import { PlayersModule } from './players/players.module';
 import { GamesModule } from './games/games.module';
 import { MemoriesModule } from './memories/memories.module';
 import { StockfishModule } from './stockfish/stockfish.module';
+import { LlmModule } from './llm/llm.module';
+import { TurnModule } from './turn/turn.module';
 
 @Module({
   imports: [
@@ -19,6 +21,8 @@ import { StockfishModule } from './stockfish/stockfish.module';
     GamesModule,
     MemoriesModule,
     StockfishModule,
+    LlmModule,
+    TurnModule,
   ],
   controllers: [],
   providers: [],

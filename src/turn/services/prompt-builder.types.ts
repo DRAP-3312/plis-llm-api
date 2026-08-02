@@ -1,0 +1,51 @@
+export type GamePhase = 'OPENING' | 'MIDDLEGAME' | 'ENDGAME';
+
+export interface MoveHistoryEntry {
+  /** Ply global de la partida (1 = primera jugada de blancas). */
+  ply: number;
+  san: string;
+}
+
+export interface GameContextInput {
+  playerColor: 'WHITE' | 'BLACK';
+  difficulty: 'EASY' | 'NORMAL' | 'HARD';
+  /** Ya recortado a las últimas 8 medias-jugadas (PromptStructure.md). */
+  moveHistory: MoveHistoryEntry[];
+  currentPhase: GamePhase;
+  /** Ya formateado, ej. "even", "+2", "-1". */
+  materialBalance: string;
+  inCheck: boolean;
+}
+
+export interface CandidateInput {
+  san: string;
+  /** Centipawns, perspectiva del jugador activo. */
+  score: number;
+  tags: string[];
+}
+
+export interface PlayerSignalsInput {
+  msThinking: number | null;
+  hesitations: number;
+  lastMoveWasBlunder: boolean;
+  /** Centipawns. */
+  evalDelta: number | null;
+  repeatedOpening: boolean;
+  defensiveStreak: number;
+  /** TurnStateMachine.md: el turno siguiente a un undo lo señala así. */
+  lastMoveWasUndo: boolean;
+}
+
+export interface ReadIndexInput {
+  hits: number;
+  attempts: number;
+}
+
+export interface PromptBuilderInput {
+  gameContext: GameContextInput;
+  candidates: CandidateInput[];
+  signals: PlayerSignalsInput;
+  /** Textos ya resueltos por MemoriesService, máximo 3. */
+  memories: string[];
+  readIndex: ReadIndexInput | null;
+}

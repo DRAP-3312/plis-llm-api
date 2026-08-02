@@ -19,9 +19,12 @@ export const envValidationSchema = Joi.object({
   STOCKFISH_TIMEOUT_CANDIDATES_MS: Joi.number().default(2000),
   STOCKFISH_TIMEOUT_PREDICTION_MS: Joi.number().default(1000),
 
-  // LLM (usado a partir del paso 3). Sin key todavía, no bloquea el arranque.
-  LLM_API_KEY: Joi.string().allow('').default(''),
-  LLM_MODEL: Joi.string().default('claude-sonnet-5'),
+  // LLM. LLM_PROVIDER selecciona qué LlmClient se inyecta (ver llm.module.ts);
+  // hoy solo 'openai' está implementado, pero el switch ya está pensado para
+  // sumar más proveedores sin tocar el resto del sistema.
+  LLM_PROVIDER: Joi.string().valid('openai').default('openai'),
+  LLM_API_KEY: Joi.string().required(),
+  LLM_MODEL: Joi.string().required(),
   LLM_TIMEOUT_MS: Joi.number().default(8000),
   LLM_MAX_TOKENS: Joi.number().default(1000),
 });
