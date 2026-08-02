@@ -100,6 +100,24 @@ export function sanForUci(fen: string, uci: string): string {
 }
 
 /**
+ * Bloque A #5 de TurnStateMachine.md ("¿El movimiento es legal?"). GamesService
+ * la usa para devolver 422 antes de llegar a TurnService, que asume que
+ * `humanMove` ya es legal (ver la nota al inicio de turn.service.ts).
+ */
+export function isLegalMove(fen: string, move: UciMoveInput): boolean {
+  try {
+    new Chess(fen).move({
+      from: move.from,
+      to: move.to,
+      promotion: move.promo,
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * StockfishIntegration.md: si el motor falla en B4, se usa "la primera
  * jugada legal disponible" como fallback de la IA.
  */

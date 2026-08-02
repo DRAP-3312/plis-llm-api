@@ -24,4 +24,11 @@ export class PredictionsRepository {
   ): Promise<Prediction | null> {
     return this.repo.findOne({ where: { gameId, targetPly, voided: false } });
   }
+
+  // Usado por GamesService en /undo: encuentra la Prediction que el Move
+  // humano que se está deshaciendo resolvió, para "des-resolverla" (volver
+  // wasCorrect a null y limpiar resolvedByMoveId).
+  findByResolvedByMoveId(moveId: string): Promise<Prediction | null> {
+    return this.repo.findOne({ where: { resolvedByMoveId: moveId } });
+  }
 }

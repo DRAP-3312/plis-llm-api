@@ -3,6 +3,7 @@ import { PERSONALITIES } from '../config/personalities.config';
 import {
   LANGUAGE_SECTION,
   RESPONSE_FORMAT_SECTION,
+  buildBiasSection,
 } from '../config/common-prompt-sections';
 import {
   PersonalityConfig,
@@ -27,7 +28,9 @@ export class PersonalitiesService {
   /**
    * Arma la capa 1 del prompt (PromptStructure.md) siguiendo el esqueleto de
    * 7 secciones de Personalities.md. Las secciones 2 (idioma) y 7 (formato)
-   * son compartidas; el resto viene de la config de cada personalidad.
+   * son compartidas; el resto viene de la config de cada personalidad. El
+   * sesgo numérico (candidateWeights/talkFrequency) se agrega como addendum
+   * antes del formato de respuesta — ver common-prompt-sections.ts.
    */
   getSystemPrompt(id: string, spiceLevel: SpiceLevel): string {
     const config = this.getConfig(id);
@@ -38,6 +41,7 @@ export class PersonalitiesService {
       config.spiceModifier[spiceLevel],
       config.commentRules,
       config.readRules,
+      buildBiasSection(config),
       RESPONSE_FORMAT_SECTION,
     ].join('\n\n');
   }

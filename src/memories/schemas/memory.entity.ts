@@ -44,6 +44,14 @@ export class Memory {
   @Column({ type: 'timestamptz', nullable: true })
   lastUsedAt!: Date | null;
 
+  // No está en ModeloDatosEndpoints.md: snapshot de PlayerProfile.games en el
+  // momento en que se usó esta memoria por última vez. Permite implementar
+  // "no se repite en partidas consecutivas" (PlisLLM.md) sin que MemoriesModule
+  // dependa de GamesModule — solo compara contra el conteo de partidas del
+  // perfil, que ya viaja por PlayersModule.
+  @Column({ type: 'int', nullable: true })
+  lastUsedAtGameNumber!: number | null;
+
   @CreateDateColumn()
   createdAt!: Date;
 }

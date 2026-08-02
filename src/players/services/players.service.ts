@@ -31,4 +31,20 @@ export class PlayersService {
   ): Promise<PlayerProfile> {
     return this.playersRepository.saveProfile(profile, manager);
   }
+
+  // "readIndex... global del jugador" (ModeloDatosEndpoints.md): cruza el
+  // perfil ya persistido con lo acumulado en la partida en curso, porque
+  // PlayerProfile solo se sincroniza al cerrar la partida. Compartido por
+  // TurnService (response del turno) y GamesService (GET /games/:id).
+  async getReadIndex(
+    playerId: string,
+    gameHits: number,
+    gameAttempts: number,
+  ): Promise<number> {
+    const profile = await this.getProfile(playerId).catch(() => null);
+    const totalHits = (profile?.correctPredictions ?? 0) + gameHits;
+    const totalAttempts = (profile?.totalPredictions ?? 0) + gameAttempts;
+    if (totalAttempts === 0) return 0;
+    return Math.round((totalHits / totalAttempts) * 100) / 100;
+  }
 }

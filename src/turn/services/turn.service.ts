@@ -32,6 +32,7 @@ import {
   GameOutcome,
   MoveHistoryEntry,
   PlayerSignalsInput,
+  PreviousPredictionInput,
 } from './prompt-builder.types';
 import {
   applyHumanMove,
@@ -208,9 +209,15 @@ export class TurnService {
       const moveHistory = await this.buildMoveHistory(game.id, [
         { ply: humanPly, san: humanApplied.san },
       ]);
+      const currentGamesCount = await this.getPlayerGamesCount(game.playerId);
       const memories = await this.memoriesService.getRelevantMemories(
         game.playerId,
+        currentGamesCount,
         RELEVANT_MEMORIES_LIMIT,
+      );
+      await this.memoriesService.markManyUsed(
+        memories.map((m) => m.id),
+        currentGamesCount,
       );
 
       const candidateInputs: CandidateInput[] = candidatesResult.candidates.map(
@@ -234,6 +241,7 @@ export class TurnService {
         signals,
         memories: memories.map((m) => m.text),
         readIndex: { hits: game.readHits, attempts: game.readAttempts },
+        previousPrediction: this.toPreviousPredictionInput(previousPrediction),
       });
 
       llmResult = await this.llmService.getResponse({
@@ -256,15 +264,17 @@ export class TurnService {
     const aiPly = humanPly + 1;
 
     // B7.5 — comentario de cierre si la jugada de la IA termina la partida.
+    // El verdict de este turno ya lo escribió el LLM en B6 (llmResult.verdictText):
+    // esta llamada de cierre es solo para el comentario de despedida.
     let endingComment: TurnComment | null = null;
     if (aiApplied.gameEnd && !forcedSilence) {
-      endingComment = await this.buildEndingComment({
+      const ending = await this.buildEndingComment({
         game,
         systemPrompt,
         fenBeforeOutcome: aiApplied.fenAfter,
         ply: aiPly,
         outcome: aiApplied.gameEnd,
-        hadPrediction: previousPrediction.hadPrediction,
+        previousPrediction: this.toPreviousPredictionInput(previousPrediction),
         signalsBase: {
           msThinking: null,
           hesitations: 0,
@@ -279,6 +289,7 @@ export class TurnService {
           { ply: aiPly, san: aiApplied.san },
         ],
       });
+      endingComment = ending.comment;
     }
 
     // B8 — nueva predicción, solo si sigue en curso, sin silencio forzado, y
@@ -441,13 +452,13 @@ export class TurnService {
       toPersonalitiesSpiceLevel(game.spiceLevel),
     );
 
-    const endingComment = await this.buildEndingComment({
+    const ending = await this.buildEndingComment({
       game,
       systemPrompt,
       fenBeforeOutcome: humanApplied.fenAfter,
       ply: humanPly,
       outcome: humanApplied.gameEnd!,
-      hadPrediction: previousPrediction.hadPrediction,
+      previousPrediction: this.toPreviousPredictionInput(previousPrediction),
       signalsBase: {
         msThinking: input.msThinking,
         hesitations: input.hesitations,
@@ -459,6 +470,7 @@ export class TurnService {
       },
       pendingMoveEntries: [{ ply: humanPly, san: humanApplied.san }],
     });
+    const endingComment = ending.comment;
 
     const humanMoveEntity = this.movesRepository.create({
       gameId: game.id,
@@ -509,7 +521,7 @@ export class TurnService {
       verdict: {
         hadPrediction: previousPrediction.hadPrediction,
         wasCorrect: previousPrediction.wasCorrect,
-        text: null,
+        text: ending.verdictText,
       },
       aiMove: null,
       comment: endingComment,
@@ -676,6 +688,20 @@ export class TurnService {
     };
   }
 
+  // TurnStateMachine.md B6: el prompt necesita saber si la predicción
+  // anterior acertó o no para que el LLM pueda escribir `verdictText` en
+  // consecuencia — sin esto, se le pide un campo sobre un dato que nunca
+  // recibió (ver la nota en prompt-builder.types.ts).
+  private toPreviousPredictionInput(
+    previousPrediction: PreviousPredictionOutcome,
+  ): PreviousPredictionInput | null {
+    if (!previousPrediction.activePrediction) return null;
+    return {
+      wasCorrect: previousPrediction.wasCorrect === true,
+      readText: previousPrediction.activePrediction.readText,
+    };
+  }
+
   private fallbackLegalMove(fen: string): string {
     const uci = firstLegalMoveUci(fen);
     if (!uci) {
@@ -809,29 +835,35 @@ export class TurnService {
     fenBeforeOutcome: string;
     ply: number;
     outcome: GameOutcome;
-    hadPrediction: boolean;
+    previousPrediction: PreviousPredictionInput | null;
     signalsBase: PlayerSignalsInput;
     /** Jugada(s) de este turno, todavía no persistidas (ver buildMoveHistory). */
     pendingMoveEntries: MoveHistoryEntry[];
-  }): Promise<TurnComment | null> {
+  }): Promise<{ comment: TurnComment | null; verdictText: string | null }> {
     const {
       game,
       systemPrompt,
       fenBeforeOutcome,
       ply,
       outcome,
-      hadPrediction,
+      previousPrediction,
       signalsBase,
       pendingMoveEntries,
     } = params;
 
+    const currentGamesCount = await this.getPlayerGamesCount(game.playerId);
     const [moveHistory, memories] = await Promise.all([
       this.buildMoveHistory(game.id, pendingMoveEntries),
       this.memoriesService.getRelevantMemories(
         game.playerId,
+        currentGamesCount,
         RELEVANT_MEMORIES_LIMIT,
       ),
     ]);
+    await this.memoriesService.markManyUsed(
+      memories.map((m) => m.id),
+      currentGamesCount,
+    );
 
     const endingPrompt = this.promptBuilderService.buildEndingPrompt({
       gameContext: {
@@ -845,16 +877,21 @@ export class TurnService {
       outcome,
       signals: signalsBase,
       memories: memories.map((m) => m.text),
+      previousPrediction,
     });
 
     const result = await this.llmService.getResponse({
       system: systemPrompt,
       user: endingPrompt,
-      hadActivePrediction: hadPrediction,
+      hadActivePrediction: previousPrediction !== null,
     });
 
-    if (!result.comment) return null;
-    return { text: result.comment, type: result.commentType ?? 'ENDING' };
+    return {
+      comment: result.comment
+        ? { text: result.comment, type: result.commentType ?? 'ENDING' }
+        : null,
+      verdictText: result.verdictText,
+    };
   }
 
   private applyOutcomeToGame(
@@ -878,6 +915,17 @@ export class TurnService {
     }
   }
 
+  // PlayerProfile.games, usado como snapshot para el filtro de memorias no
+  // repetidas en partidas consecutivas (ver memories.repository.ts). Se
+  // resuelve a 0 si el perfil no existe todavía (no debería pasar en juego
+  // normal: PlayersService crea el perfil vacío junto con el Player).
+  private async getPlayerGamesCount(playerId: string): Promise<number> {
+    const profile = await this.playersService
+      .getProfile(playerId)
+      .catch(() => null);
+    return profile?.games ?? 0;
+  }
+
   private computeMatchPhase(
     outcome: GameOutcome | null,
     isCheck: boolean,
@@ -886,17 +934,12 @@ export class TurnService {
     return isCheck ? 'CHECK' : 'ONGOING';
   }
 
-  // "readIndex... global del jugador" (ModeloDatosEndpoints.md) — cruza el
-  // perfil ya persistido con lo acumulado en la partida en curso, porque
-  // PlayerProfile solo se sincroniza al cerrar la partida.
   private async computeGlobalReadIndex(game: Game): Promise<number> {
-    const profile = await this.playersService
-      .getProfile(game.playerId)
-      .catch(() => null);
-    const totalHits = (profile?.correctPredictions ?? 0) + game.readHits;
-    const totalAttempts = (profile?.totalPredictions ?? 0) + game.readAttempts;
-    if (totalAttempts === 0) return 0;
-    return Math.round((totalHits / totalAttempts) * 100) / 100;
+    return this.playersService.getReadIndex(
+      game.playerId,
+      game.readHits,
+      game.readAttempts,
+    );
   }
 
   // Nota de alcance: actualiza los contadores simples de PlayerProfile
@@ -904,7 +947,11 @@ export class TurnService {
   // avgMsPerMove). `tendencies` (defensivePct, undoRate, etc.) y
   // `avgMsInCheck` requieren un análisis histórico más profundo que no
   // entra en el alcance de este paso — quedan en su valor actual.
-  private async updatePlayerProfileOnGameEnd(
+  //
+  // Público: GamesService lo reutiliza en /resign (ModeloDatosEndpoints.md:
+  // "Cuándo actualizar el perfil" aplica igual sin importar cómo terminó la
+  // partida — jaque mate, tablas o abandono).
+  async updatePlayerProfileOnGameEnd(
     game: Game,
     manager: EntityManager,
   ): Promise<void> {

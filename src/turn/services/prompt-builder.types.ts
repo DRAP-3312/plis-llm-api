@@ -41,6 +41,16 @@ export interface ReadIndexInput {
   attempts: number;
 }
 
+// TurnStateMachine.md B6: "Si hubo predicción: si acertó o no, para que el
+// LLM genere el texto del verdict... en consecuencia". Sin esto el LLM no
+// tiene forma de saber si debe declararse acertado o equivocado, aunque el
+// system prompt le pida `verdictText` — ver la nota en turn.service.ts.
+export interface PreviousPredictionInput {
+  wasCorrect: boolean;
+  /** La insinuación del turno anterior. Ya no es secreta: la predicción ya se resolvió. */
+  readText: string | null;
+}
+
 export interface PromptBuilderInput {
   gameContext: GameContextInput;
   candidates: CandidateInput[];
@@ -48,6 +58,8 @@ export interface PromptBuilderInput {
   /** Textos ya resueltos por MemoriesService, máximo 3. */
   memories: string[];
   readIndex: ReadIndexInput | null;
+  /** null si no había una predicción activa este turno. */
+  previousPrediction: PreviousPredictionInput | null;
 }
 
 export interface GameOutcome {
@@ -63,4 +75,5 @@ export interface EndingPromptInput {
   outcome: GameOutcome;
   signals: PlayerSignalsInput;
   memories: string[];
+  previousPrediction: PreviousPredictionInput | null;
 }

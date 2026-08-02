@@ -14,16 +14,34 @@ export class MemoriesRepository {
     return repo.save(repo.create(data));
   }
 
-  findRelevantForPlayer(playerId: string, limit: number): Promise<Memory[]> {
-    return this.repo.find({
-      where: { playerId },
-      order: { weight: 'DESC', createdAt: 'DESC' },
-      take: limit,
-    });
+  // PromptStructure.md (Capa 4): "que no se hayan usado en las últimas 2
+  // partidas". `currentGamesCount` es PlayerProfile.games; una memoria es
+  // elegible si nunca se usó o si ya pasaron al menos 2 partidas desde la
+  // última vez (lastUsedAtGameNumber <= currentGamesCount - 2).
+  findRelevantForPlayer(
+    playerId: string,
+    currentGamesCount: number,
+    limit: number,
+  ): Promise<Memory[]> {
+    const threshold = currentGamesCount - 2;
+    return this.repo
+      .createQueryBuilder('memory')
+      .where('memory.playerId = :playerId', { playerId })
+      .andWhere(
+        '(memory.lastUsedAtGameNumber IS NULL OR memory.lastUsedAtGameNumber <= :threshold)',
+        { threshold },
+      )
+      .orderBy('memory.weight', 'DESC')
+      .addOrderBy('memory.createdAt', 'DESC')
+      .take(limit)
+      .getMany();
   }
 
-  async markUsed(id: string): Promise<void> {
+  async markUsed(id: string, currentGamesCount: number): Promise<void> {
     await this.repo.increment({ id }, 'useCount', 1);
-    await this.repo.update(id, { lastUsedAt: new Date() });
+    await this.repo.update(id, {
+      lastUsedAt: new Date(),
+      lastUsedAtGameNumber: currentGamesCount,
+    });
   }
 }

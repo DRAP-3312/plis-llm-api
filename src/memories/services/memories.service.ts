@@ -22,12 +22,35 @@ export class MemoriesService {
     return this.memoriesRepository.create(input, manager);
   }
 
-  // Usado por PromptBuilderService (paso 3) para armar la Capa 4 del prompt.
-  getRelevantMemories(playerId: string, limit = 3): Promise<Memory[]> {
-    return this.memoriesRepository.findRelevantForPlayer(playerId, limit);
+  // Usado por TurnService al armar la Capa 4 del prompt. `currentGamesCount`
+  // es PlayerProfile.games, necesario para el filtro de "no repetir en
+  // partidas consecutivas" (ver memories.repository.ts).
+  getRelevantMemories(
+    playerId: string,
+    currentGamesCount: number,
+    limit = 3,
+  ): Promise<Memory[]> {
+    return this.memoriesRepository.findRelevantForPlayer(
+      playerId,
+      currentGamesCount,
+      limit,
+    );
   }
 
-  markUsed(memoryId: string): Promise<void> {
-    return this.memoriesRepository.markUsed(memoryId);
+  markUsed(memoryId: string, currentGamesCount: number): Promise<void> {
+    return this.memoriesRepository.markUsed(memoryId, currentGamesCount);
+  }
+
+  // Se marcan como usadas todas las memorias que entraron al prompt, no solo
+  // la que el LLM termine mencionando en el texto — el schema del LLM
+  // (PromptStructure.md) no reporta cuál usó. Decisión aceptada: en el peor
+  // caso, una memoria relevante descansa una partida extra.
+  async markManyUsed(
+    memoryIds: string[],
+    currentGamesCount: number,
+  ): Promise<void> {
+    await Promise.all(
+      memoryIds.map((id) => this.markUsed(id, currentGamesCount)),
+    );
   }
 }

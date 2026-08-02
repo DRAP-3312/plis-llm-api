@@ -89,4 +89,11 @@ export class Game {
 
   @Column({ type: 'timestamptz', nullable: true })
   endedAt!: Date | null;
+
+  // No está en ModeloDatosEndpoints.md: GamesService lo usa para saber que el
+  // turno que se está por jugar es el siguiente a un undo, y así setear
+  // `lastMoveWasUndo: true` en las señales psicológicas de ese único turno
+  // (TurnStateMachine.md, sección undo). Se limpia apenas se consume.
+  @Column({ default: false })
+  pendingUndoFlag!: boolean;
 }

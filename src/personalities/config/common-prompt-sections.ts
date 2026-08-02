@@ -1,3 +1,5 @@
+import { PersonalityConfig } from '../personalities.types';
+
 // Secciones del system prompt que son iguales para casi todas las
 // personalidades (Personalities.md, "Estructura del system prompt por
 // personalidad"). La Máquina es la única excepción documentada para las
@@ -34,3 +36,23 @@ Schema obligatorio:
   "verdictText": string | null
 }
 "verdictText" va en tu propia voz si el turno anterior tenía una predicción activa (te dicen si acertaste o no); si no había predicción, mandalo en null.`;
+
+function pct(weight: number): number {
+  return Math.round(weight * 100);
+}
+
+/**
+ * Personalities.md, "Estructura de configuración en código": `candidateWeights`
+ * y `talkFrequency` son números que hoy solo viven en la config. No pueden
+ * usarse para que el backend tire un dado o sobreescriba al LLM — PlisLLM.md
+ * es explícito en que hablar (y por extensión, elegir jugada) "es una
+ * decisión del LLM, no aleatoriedad del backend". La única forma fiel al
+ * doc de aprovecharlos es pasárselos como referencia numérica, reforzando la
+ * guía cualitativa que ya trae cada `*.prompt.ts`.
+ */
+export function buildBiasSection(config: PersonalityConfig): string {
+  const [w0, w1, w2] = config.candidateWeights;
+  return `SESGO NUMÉRICO (referencia interna: no lo repitas ni lo menciones al jugador)
+- Preferencia entre las candidatas del motor: candidata 0 ${pct(w0)}%, candidata 1 ${pct(w1)}%, candidata 2 ${pct(w2)}%.
+- Frecuencia de habla aproximada: hablás (comment y/o read) en el ${pct(config.talkFrequency)}% de los turnos.`;
+}

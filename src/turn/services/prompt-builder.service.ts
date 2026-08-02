@@ -6,6 +6,7 @@ import {
   GameOutcome,
   MoveHistoryEntry,
   PlayerSignalsInput,
+  PreviousPredictionInput,
   PromptBuilderInput,
   ReadIndexInput,
 } from './prompt-builder.types';
@@ -143,6 +144,29 @@ function buildSignalsSection(signals: PlayerSignalsInput): string {
   return lines.join('\n');
 }
 
+// TurnStateMachine.md B6: sin esta sección el LLM no tiene forma de saber si
+// debe declararse acertado o equivocado en `verdictText`, aunque el system
+// prompt se lo pida (ver la nota en prompt-builder.types.ts).
+function buildPreviousPredictionSection(
+  prediction: PreviousPredictionInput | null,
+): string | null {
+  if (!prediction) return null;
+
+  const outcome = prediction.wasCorrect ? 'ACERTASTE' : 'TE EQUIVOCASTE';
+  const lines = [
+    'PREVIOUS PREDICTION',
+    '--------------------',
+    `${outcome} en tu predicción del turno anterior.`,
+  ];
+  if (prediction.readText) {
+    lines.push(`Tu insinuación fue: "${prediction.readText}"`);
+  }
+  lines.push(
+    'Generá "verdictText" en tu propia voz reaccionando a este resultado.',
+  );
+  return lines.join('\n');
+}
+
 function buildMemorySection(
   memories: string[],
   readIndex: ReadIndexInput | null,
@@ -176,6 +200,7 @@ export class PromptBuilderService {
   build(input: PromptBuilderInput): string {
     const sections = [
       buildGameContextSection(input),
+      buildPreviousPredictionSection(input.previousPrediction),
       buildSignalsSection(input.signals),
       buildMemorySection(input.memories, input.readIndex),
     ].filter((section): section is string => section !== null);
@@ -190,6 +215,7 @@ export class PromptBuilderService {
   buildEndingPrompt(input: EndingPromptInput): string {
     const sections = [
       buildEndingGameContextSection(input),
+      buildPreviousPredictionSection(input.previousPrediction),
       buildSignalsSection(input.signals),
       buildMemorySection(input.memories, null),
     ].filter((section): section is string => section !== null);

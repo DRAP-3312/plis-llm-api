@@ -59,4 +59,17 @@ describe('PersonalitiesService', () => {
     expect(maquina.candidateWeights).toEqual([1, 0, 0]);
     expect(maquina.talkFrequency).toBe(0.55);
   });
+
+  it('injects candidateWeights/talkFrequency as a numeric reference section, before the response format', () => {
+    const prompt = service.getSystemPrompt('hater', 'NORMAL');
+    expect(prompt).toContain(
+      'candidata 0 70%, candidata 1 25%, candidata 2 5%',
+    );
+    expect(prompt).toContain(
+      'hablás (comment y/o read) en el 80% de los turnos',
+    );
+    expect(prompt.indexOf('SESGO NUMÉRICO')).toBeLessThan(
+      prompt.indexOf('7. FORMATO DE RESPUESTA'),
+    );
+  });
 });

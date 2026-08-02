@@ -40,6 +40,7 @@ describe('PromptBuilderService', () => {
     },
     memories: [],
     readIndex: null,
+    previousPrediction: null,
   };
 
   it('numbers the move history exactly like the doc example', () => {
@@ -92,12 +93,48 @@ describe('PromptBuilderService', () => {
     expect(prompt).toContain('- Read index: 7/10 correct predictions so far');
   });
 
+  describe('previousPrediction (TurnStateMachine.md B6)', () => {
+    it('omits the section entirely when there was no active prediction', () => {
+      const prompt = service.build(baseInput);
+      expect(prompt).not.toContain('PREVIOUS PREDICTION');
+    });
+
+    it('tells the LLM it was right, including the insinuation it made', () => {
+      const prompt = service.build({
+        ...baseInput,
+        previousPrediction: {
+          wasCorrect: true,
+          readText: 'No toques el caballo todavía.',
+        },
+      });
+      expect(prompt).toContain('PREVIOUS PREDICTION');
+      expect(prompt).toContain(
+        'ACERTASTE en tu predicción del turno anterior.',
+      );
+      expect(prompt).toContain(
+        'Tu insinuación fue: "No toques el caballo todavía."',
+      );
+    });
+
+    it('tells the LLM it was wrong', () => {
+      const prompt = service.build({
+        ...baseInput,
+        previousPrediction: { wasCorrect: false, readText: null },
+      });
+      expect(prompt).toContain(
+        'TE EQUIVOCASTE en tu predicción del turno anterior.',
+      );
+      expect(prompt).not.toContain('Tu insinuación fue');
+    });
+  });
+
   describe('buildEndingPrompt', () => {
     const endingInput: EndingPromptInput = {
       gameContext: baseInput.gameContext,
       outcome: { status: 'CHECKMATE', winner: 'AI' },
       signals: baseInput.signals,
       memories: [],
+      previousPrediction: null,
     };
 
     it('has no CANDIDATES section', () => {
