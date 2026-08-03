@@ -410,12 +410,13 @@ export class TurnService {
         capture: aiApplied.capturedPiece,
       },
       comment: finalComment,
-      read: llmResult.read
-        ? {
-            text: llmResult.read,
-            confidence: llmResult.readConfidence ?? 'medium',
-          }
-        : null,
+      read:
+        !aiApplied.gameEnd && llmResult.read
+          ? {
+              text: llmResult.read,
+              confidence: llmResult.readConfidence ?? 'medium',
+            }
+          : null,
       status: {
         phase: this.computeMatchPhase(aiApplied.gameEnd, aiApplied.isCheck),
         turn: 'HUMAN',
