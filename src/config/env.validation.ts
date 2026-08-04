@@ -28,4 +28,13 @@ export const envValidationSchema = Joi.object({
   LLM_MODEL: Joi.string().required(),
   LLM_TIMEOUT_MS: Joi.number().default(8000),
   LLM_MAX_TOKENS: Joi.number().default(1000),
+
+  // Auth
+  JWT_SECRET: Joi.string().required(),
+  JWT_EXPIRES_IN_SECONDS: Joi.number().default(60 * 60 * 24 * 30),
+  IP_HASH_SALT: Joi.string().required(),
+  TRUST_PROXY: Joi.boolean().default(false),
+  AUTH_MAX_ACCOUNTS_PER_IP: Joi.number().default(3),
+  GAMES_MAX_COMPLETED_PER_PLAYER: Joi.number().default(10),
+  GAMES_MAX_COMPLETED_PER_IP_PER_DAY: Joi.number().default(30),
 });

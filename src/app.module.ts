@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule } from './config/config.module';
 import { typeOrmModuleOptions } from './config/typeorm.config';
+import { AuthModule } from './auth/auth.module';
 import { PlayersModule } from './players/players.module';
 import { GamesModule } from './games/games.module';
 import { MemoriesModule } from './memories/memories.module';
@@ -18,6 +19,7 @@ import { PersonalitiesModule } from './personalities/personalities.module';
       inject: [ConfigService],
       useFactory: typeOrmModuleOptions,
     }),
+    AuthModule,
     PlayersModule,
     GamesModule,
     MemoriesModule,

@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { EntityManager, Repository } from 'typeorm';
-import { Game } from '../schemas/game.entity';
+import { EntityManager, MoreThanOrEqual, Not, Repository } from 'typeorm';
+import { Game, GameStatus } from '../schemas/game.entity';
 
 @Injectable()
 export class GamesRepository {
@@ -13,14 +13,25 @@ export class GamesRepository {
     return this.repo.create(data);
   }
 
-  // `manager` la pasa TurnService cuando esta escritura forma parte de la
-  // transacción de Bloque C (TurnStateMachine.md); sin él usa la conexión
-  // por defecto, para el resto de los casos (ej. crear una partida nueva).
   save(game: Game, manager?: EntityManager): Promise<Game> {
     return (manager?.getRepository(Game) ?? this.repo).save(game);
   }
 
   findById(id: string): Promise<Game | null> {
     return this.repo.findOneBy({ id });
+  }
+
+  countCompletedByPlayerId(playerId: string): Promise<number> {
+    return this.repo.countBy({ playerId, status: Not(GameStatus.ONGOING) });
+  }
+
+  countCompletedByIpHashSince(ipHash: string, since: Date): Promise<number> {
+    return this.repo.count({
+      where: {
+        creatorIpHash: ipHash,
+        status: Not(GameStatus.ONGOING),
+        createdAt: MoreThanOrEqual(since),
+      },
+    });
   }
 }

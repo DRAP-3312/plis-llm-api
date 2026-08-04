@@ -1,4 +1,4 @@
-import { IsEnum, IsNotEmpty, IsString, IsUUID } from 'class-validator';
+import { IsEnum, IsNotEmpty, IsString } from 'class-validator';
 import {
   GameDifficulty,
   PlayerColor,
@@ -6,9 +6,6 @@ import {
 } from '../schemas/game.entity';
 
 export class CreateGameDto {
-  @IsUUID()
-  playerId!: string;
-
   @IsString()
   @IsNotEmpty()
   personalityId!: string;

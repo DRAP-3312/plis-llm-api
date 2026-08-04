@@ -1,11 +1,13 @@
 import {
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
   UnprocessableEntityException,
   forwardRef,
   Inject,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { Chess } from 'chess.js';
@@ -36,6 +38,7 @@ import {
   UciMoveInput,
 } from '../../turn/services/chess-engine.util';
 import { formatMaterialBalance } from '../../turn/services/game-context.util';
+import { hashIp } from '../../common/utils/hash-ip.util';
 
 const STARTING_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 
@@ -55,9 +58,14 @@ export class GamesService {
     private readonly predictionsRepository: PredictionsRepository,
     private readonly tauntsRepository: TauntsRepository,
     private readonly playersService: PlayersService,
+    private readonly configService: ConfigService,
   ) {}
 
-  async createGame(dto: CreateGameDto): Promise<Game> {
+  async createGame(
+    playerId: string,
+    dto: CreateGameDto,
+    creatorIp: string,
+  ): Promise<Game> {
     // playerColor: BLACK requeriría que la IA (blancas) mueva primero, sin
     // que exista todavía una jugada del humano — ese flujo no está
     // implementado (decisión explícita: se deja fuera de este alcance).
@@ -67,8 +75,14 @@ export class GamesService {
       );
     }
 
+    const creatorIpHash = hashIp(
+      creatorIp,
+      this.configService.get<string>('IP_HASH_SALT')!,
+    );
+    await this.assertUsageLimits(playerId, creatorIpHash);
+
     const game = this.gamesRepository.create({
-      playerId: dto.playerId,
+      playerId,
       personalityId: dto.personalityId,
       difficulty: dto.difficulty,
       spiceLevel: dto.spiceLevel,
@@ -82,12 +96,14 @@ export class GamesService {
       readAttempts: 0,
       endedAt: null,
       pendingUndoFlag: false,
+      creatorIpHash,
     });
     return this.gamesRepository.save(game);
   }
 
-  async getGame(id: string): Promise<GameStateResponse> {
+  async getGame(id: string, playerId: string): Promise<GameStateResponse> {
     const game = await this.requireGame(id);
+    this.assertOwnership(game, playerId);
 
     const [moves, taunts, pendingPrediction, readIndex] = await Promise.all([
       this.movesRepository.findByGameId(id),
@@ -125,8 +141,13 @@ export class GamesService {
     };
   }
 
-  async playMove(gameId: string, dto: PlayMoveDto): Promise<TurnResult> {
+  async playMove(
+    gameId: string,
+    playerId: string,
+    dto: PlayMoveDto,
+  ): Promise<TurnResult> {
     const game = await this.requireGame(gameId);
+    this.assertOwnership(game, playerId);
     this.assertOngoing(game);
     this.assertHumansTurn(game);
     this.assertPlyMatches(game, dto.expectedPly);
@@ -156,13 +177,14 @@ export class GamesService {
     });
   }
 
-  async hesitation(gameId: string): Promise<void> {
+  async hesitation(gameId: string, playerId: string): Promise<void> {
     // Fire-and-forget (TurnStateMachine.md): en este modelo de datos nunca
     // hay un Move "activo" persistido antes de que el turno completo se
     // confirme en el Bloque C — siempre cae en la salvedad del propio doc
     // ("si no hay Move activo aún, se descarta silenciosamente"). Solo se
     // valida que la partida exista para no aceptar ids basura en silencio.
-    await this.requireGame(gameId);
+    const game = await this.requireGame(gameId);
+    this.assertOwnership(game, playerId);
   }
 
   /**
@@ -177,8 +199,9 @@ export class GamesService {
    * y revertir eso con precisión (en particular `avgMsPerMove`, un promedio
    * acumulado) queda fuera de alcance para un prototipo.
    */
-  async undo(gameId: string): Promise<UndoResponse> {
+  async undo(gameId: string, playerId: string): Promise<UndoResponse> {
     const game = await this.requireGame(gameId);
+    this.assertOwnership(game, playerId);
     this.assertOngoing(game);
 
     const activeMoves = (
@@ -251,8 +274,9 @@ export class GamesService {
     };
   }
 
-  async resign(gameId: string): Promise<Game> {
+  async resign(gameId: string, playerId: string): Promise<Game> {
     const game = await this.requireGame(gameId);
+    this.assertOwnership(game, playerId);
     this.assertOngoing(game);
 
     game.status = GameStatus.RESIGNED;
@@ -277,6 +301,45 @@ export class GamesService {
       throw new NotFoundException('Game not found');
     }
     return game;
+  }
+
+  private assertOwnership(game: Game, playerId: string): void {
+    if (game.playerId !== playerId) {
+      throw new ForbiddenException('this game does not belong to you');
+    }
+  }
+
+  private async assertUsageLimits(
+    playerId: string,
+    creatorIpHash: string,
+  ): Promise<void> {
+    const maxPerPlayer = this.configService.get<number>(
+      'GAMES_MAX_COMPLETED_PER_PLAYER',
+    )!;
+    const maxPerIpPerDay = this.configService.get<number>(
+      'GAMES_MAX_COMPLETED_PER_IP_PER_DAY',
+    )!;
+    const startOfToday = new Date();
+    startOfToday.setUTCHours(0, 0, 0, 0);
+
+    const [completedByPlayer, completedByIpToday] = await Promise.all([
+      this.gamesRepository.countCompletedByPlayerId(playerId),
+      this.gamesRepository.countCompletedByIpHashSince(
+        creatorIpHash,
+        startOfToday,
+      ),
+    ]);
+
+    if (completedByPlayer >= maxPerPlayer) {
+      throw new ForbiddenException(
+        `free game limit reached (${maxPerPlayer} completed games per account)`,
+      );
+    }
+    if (completedByIpToday >= maxPerIpPerDay) {
+      throw new ForbiddenException(
+        'too many completed games from this network today',
+      );
+    }
   }
 
   private assertOngoing(game: Game): void {

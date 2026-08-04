@@ -1,8 +1,10 @@
 import {
   ConflictException,
+  ForbiddenException,
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { DataSource, EntityManager } from 'typeorm';
 import { GamesService } from './games.service';
 import { GamesRepository } from '../repositories/games.repository';
@@ -20,6 +22,7 @@ import {
 import { Move, MoveSide } from '../schemas/move.entity';
 import { Prediction } from '../schemas/prediction.entity';
 import { PlayMoveDto } from '../dto/play-move.dto';
+import { CreateGameDto } from '../dto/create-game.dto';
 import { PlayersService } from '../../players/services/players.service';
 import { TurnService } from '../../turn/services/turn.service';
 import { PlayTurnInput } from '../../turn/turn.types';
@@ -51,6 +54,7 @@ function fakeGame(overrides: Partial<Game> = {}): Game {
     createdAt: new Date(),
     endedAt: null,
     pendingUndoFlag: false,
+    creatorIpHash: 'ip-hash-1',
     ...overrides,
   };
 }
@@ -116,6 +120,8 @@ function buildService(opts: {
   game?: Game | null;
   moves?: Move[];
   predictions?: Prediction[];
+  completedByPlayer?: number;
+  completedByIpToday?: number;
 }) {
   const savedGames: Saved<Game>[] = [];
   const savedMoves: Saved<Move>[] = [];
@@ -129,6 +135,10 @@ function buildService(opts: {
       return Promise.resolve(game);
     },
     findById: () => Promise.resolve(opts.game ?? null),
+    countCompletedByPlayerId: () =>
+      Promise.resolve(opts.completedByPlayer ?? 0),
+    countCompletedByIpHashSince: () =>
+      Promise.resolve(opts.completedByIpToday ?? 0),
   } as unknown as GamesRepository;
 
   const movesRepository = {
@@ -183,6 +193,15 @@ function buildService(opts: {
       cb({} as EntityManager),
   } as unknown as DataSource;
 
+  const configValues: Record<string, unknown> = {
+    IP_HASH_SALT: 'salt',
+    GAMES_MAX_COMPLETED_PER_PLAYER: 10,
+    GAMES_MAX_COMPLETED_PER_IP_PER_DAY: 30,
+  };
+  const configService = {
+    get: (key: string) => configValues[key],
+  } as unknown as ConfigService;
+
   const service = new GamesService(
     dataSource,
     turnService,
@@ -191,6 +210,7 @@ function buildService(opts: {
     predictionsRepository,
     tauntsRepository,
     playersService,
+    configService,
   );
 
   return {
@@ -202,17 +222,25 @@ function buildService(opts: {
   };
 }
 
+function validCreateGameDto(overrides: Partial<CreateGameDto> = {}) {
+  return {
+    personalityId: 'hater',
+    difficulty: GameDifficulty.NORMAL,
+    playerColor: PlayerColor.WHITE,
+    spiceLevel: SpiceLevel.NORMAL,
+    ...overrides,
+  };
+}
+
 describe('GamesService', () => {
   describe('createGame', () => {
     it('starts a new game at the standard starting position', async () => {
       const { service, savedGames } = buildService({});
-      const game = await service.createGame({
-        playerId: 'player-1',
-        personalityId: 'hater',
-        difficulty: GameDifficulty.NORMAL,
-        playerColor: PlayerColor.WHITE,
-        spiceLevel: SpiceLevel.NORMAL,
-      });
+      const game = await service.createGame(
+        'player-1',
+        validCreateGameDto(),
+        '1.2.3.4',
+      );
       expect(game.currentFen).toBe(STARTING_FEN);
       expect(game.status).toBe(GameStatus.ONGOING);
       expect(savedGames).toHaveLength(1);
@@ -221,32 +249,44 @@ describe('GamesService', () => {
     it('rejects playerColor BLACK: the engine cannot open the game on its own yet', async () => {
       const { service } = buildService({});
       await expect(
-        service.createGame({
-          playerId: 'player-1',
-          personalityId: 'hater',
-          difficulty: GameDifficulty.NORMAL,
-          playerColor: PlayerColor.BLACK,
-          spiceLevel: SpiceLevel.NORMAL,
-        }),
+        service.createGame(
+          'player-1',
+          validCreateGameDto({ playerColor: PlayerColor.BLACK }),
+          '1.2.3.4',
+        ),
       ).rejects.toThrow(UnprocessableEntityException);
+    });
+
+    it('rejects when the account already hit the completed-games limit', async () => {
+      const { service } = buildService({ completedByPlayer: 10 });
+      await expect(
+        service.createGame('player-1', validCreateGameDto(), '1.2.3.4'),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('rejects when the origin IP already hit the daily completed-games cap', async () => {
+      const { service } = buildService({ completedByIpToday: 30 });
+      await expect(
+        service.createGame('player-1', validCreateGameDto(), '1.2.3.4'),
+      ).rejects.toThrow(ForbiddenException);
     });
   });
 
   describe('playMove — Bloque A', () => {
     it('throws NotFoundException when the game does not exist', async () => {
       const { service } = buildService({ game: null });
-      await expect(service.playMove('missing', validMoveDto())).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(
+        service.playMove('missing', 'player-1', validMoveDto()),
+      ).rejects.toThrow(NotFoundException);
     });
 
     it('throws ConflictException when the game already ended', async () => {
       const { service } = buildService({
         game: fakeGame({ status: GameStatus.CHECKMATE }),
       });
-      await expect(service.playMove('game-1', validMoveDto())).rejects.toThrow(
-        ConflictException,
-      );
+      await expect(
+        service.playMove('game-1', 'player-1', validMoveDto()),
+      ).rejects.toThrow(ConflictException);
     });
 
     it("throws ConflictException when it's not the human's turn", async () => {
@@ -258,22 +298,30 @@ describe('GamesService', () => {
           playerColor: PlayerColor.WHITE,
         }),
       });
-      await expect(service.playMove('game-1', validMoveDto())).rejects.toThrow(
-        ConflictException,
-      );
+      await expect(
+        service.playMove('game-1', 'player-1', validMoveDto()),
+      ).rejects.toThrow(ConflictException);
     });
 
     it('throws ConflictException on ply mismatch', async () => {
       const { service } = buildService({ game: fakeGame({ ply: 4 }) });
       await expect(
-        service.playMove('game-1', validMoveDto({ expectedPly: 1 })),
+        service.playMove(
+          'game-1',
+          'player-1',
+          validMoveDto({ expectedPly: 1 }),
+        ),
       ).rejects.toThrow(ConflictException);
     });
 
     it('throws UnprocessableEntityException for an illegal move', async () => {
       const { service } = buildService({ game: fakeGame() });
       await expect(
-        service.playMove('game-1', validMoveDto({ from: 'e2', to: 'e5' })),
+        service.playMove(
+          'game-1',
+          'player-1',
+          validMoveDto({ from: 'e2', to: 'e5' }),
+        ),
       ).rejects.toThrow(UnprocessableEntityException);
     });
 
@@ -281,7 +329,7 @@ describe('GamesService', () => {
       const { service, getPlayTurnInput } = buildService({
         game: fakeGame({ pendingUndoFlag: true }),
       });
-      await service.playMove('game-1', validMoveDto());
+      await service.playMove('game-1', 'player-1', validMoveDto());
       const input = getPlayTurnInput()!;
       expect(input.lastMoveWasUndo).toBe(true);
       expect(input.game.pendingUndoFlag).toBe(false);
@@ -291,12 +339,14 @@ describe('GamesService', () => {
   describe('hesitation', () => {
     it('resolves silently for an existing game', async () => {
       const { service } = buildService({ game: fakeGame() });
-      await expect(service.hesitation('game-1')).resolves.toBeUndefined();
+      await expect(
+        service.hesitation('game-1', 'player-1'),
+      ).resolves.toBeUndefined();
     });
 
     it('throws NotFoundException for an unknown game', async () => {
       const { service } = buildService({ game: null });
-      await expect(service.hesitation('missing')).rejects.toThrow(
+      await expect(service.hesitation('missing', 'player-1')).rejects.toThrow(
         NotFoundException,
       );
     });
@@ -307,12 +357,16 @@ describe('GamesService', () => {
       const { service } = buildService({
         game: fakeGame({ status: GameStatus.DRAW }),
       });
-      await expect(service.undo('game-1')).rejects.toThrow(ConflictException);
+      await expect(service.undo('game-1', 'player-1')).rejects.toThrow(
+        ConflictException,
+      );
     });
 
     it('throws ConflictException when there is no human+AI pair to undo', async () => {
       const { service } = buildService({ game: fakeGame(), moves: [] });
-      await expect(service.undo('game-1')).rejects.toThrow(ConflictException);
+      await expect(service.undo('game-1', 'player-1')).rejects.toThrow(
+        ConflictException,
+      );
     });
 
     it('reverts the full turn: both moves, fen/ply, voids the new prediction and un-resolves the previous one', async () => {
@@ -360,7 +414,7 @@ describe('GamesService', () => {
           predictions: [resolvedPrediction, newPrediction],
         });
 
-      const result = await service.undo('game-1');
+      const result = await service.undo('game-1', 'player-1');
 
       expect(savedMoves.map((s) => s.entity.id).sort()).toEqual([
         'ai-1',
@@ -415,7 +469,7 @@ describe('GamesService', () => {
         predictions: [],
       });
 
-      await service.undo('game-1');
+      await service.undo('game-1', 'player-1');
 
       expect(game.readHits).toBe(3);
       expect(game.readAttempts).toBe(5);
@@ -427,7 +481,7 @@ describe('GamesService', () => {
       const game = fakeGame();
       const { service, savedGames } = buildService({ game });
 
-      const result = await service.resign('game-1');
+      const result = await service.resign('game-1', 'player-1');
 
       expect(result.status).toBe(GameStatus.RESIGNED);
       expect(result.result).toBe(GameResult.LOSS);
@@ -439,7 +493,9 @@ describe('GamesService', () => {
       const { service } = buildService({
         game: fakeGame({ status: GameStatus.RESIGNED }),
       });
-      await expect(service.resign('game-1')).rejects.toThrow(ConflictException);
+      await expect(service.resign('game-1', 'player-1')).rejects.toThrow(
+        ConflictException,
+      );
     });
   });
 });

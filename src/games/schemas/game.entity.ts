@@ -41,8 +41,6 @@ export class Game {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 
-  // Sin relación TypeORM a propósito: `players` y `games` son módulos
-  // distintos y los servicios no deben cruzar entidades entre módulos.
   @Index()
   @Column('uuid')
   playerId!: string;
@@ -90,10 +88,10 @@ export class Game {
   @Column({ type: 'timestamptz', nullable: true })
   endedAt!: Date | null;
 
-  // No está en ModeloDatosEndpoints.md: GamesService lo usa para saber que el
-  // turno que se está por jugar es el siguiente a un undo, y así setear
-  // `lastMoveWasUndo: true` en las señales psicológicas de ese único turno
-  // (TurnStateMachine.md, sección undo). Se limpia apenas se consume.
+  @Index()
+  @Column()
+  creatorIpHash!: string;
+
   @Column({ default: false })
   pendingUndoFlag!: boolean;
 }
